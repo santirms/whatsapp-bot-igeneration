@@ -1,7 +1,7 @@
 const axios = require('axios');
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
 // Prompt del sistema con la personalidad y datos de la tienda
 const SYSTEM_PROMPT = `Sos el asistente virtual de iGeneration, una tienda argentina de gadgets y electrónicos.
