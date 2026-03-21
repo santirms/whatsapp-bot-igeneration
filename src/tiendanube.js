@@ -115,7 +115,7 @@ function formatPrice(price) {
   return `$${parseFloat(price).toLocaleString('es-AR', { minimumFractionDigits: 0 })}`;
 }
 
-// Generar resumen del catálogo para el prompt de IA
+// Generar resumen del catálogo para el prompt de IA (con URLs)
 async function getCatalogSummary() {
   const products = await getProducts();
   
@@ -125,7 +125,11 @@ async function getCatalogSummary() {
 
   const summary = products
     .filter(p => p.available)
-    .map(p => `- ${p.name}: ${formatPrice(p.price)} ${p.stock > 0 ? '(En stock)' : '(Sin stock)'}`)
+    .map(p => {
+      const stockStatus = p.stock > 0 ? 'En stock' : 'Sin stock';
+      const url = p.url ? ` | Link: ${p.url}` : '';
+      return `- ${p.name}: ${formatPrice(p.price)} (${stockStatus})${url}`;
+    })
     .join('\n');
 
   return summary;
@@ -147,7 +151,8 @@ async function checkStock(productName) {
     name: product.name,
     available: product.available,
     stock: product.stock,
-    price: formatPrice(product.price)
+    price: formatPrice(product.price),
+    url: product.url
   };
 }
 
