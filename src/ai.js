@@ -1,10 +1,38 @@
 const axios = require('axios');
+const { getCatalogSummary } = require('./tiendanube');
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
-// Prompt del sistema con la personalidad de Josefina
-const SYSTEM_PROMPT = `Sos Josefina, la asistente de ventas de iGeneration, una tienda argentina de gadgets y electrónicos.
+// Cache del catálogo para el prompt
+let catalogCache = {
+  summary: '',
+  lastUpdate: null
+};
+const CATALOG_CACHE_DURATION = 5 * 60 * 1000; // 5 minutos
+
+// Obtener catálogo actualizado para el prompt
+async function getUpdatedCatalog() {
+  const now = Date.now();
+  if (catalogCache.lastUpdate && (now - catalogCache.lastUpdate) < CATALOG_CACHE_DURATION) {
+    return catalogCache.summary;
+  }
+
+  try {
+    const summary = await getCatalogSummary();
+    catalogCache = { summary, lastUpdate: now };
+    return summary;
+  } catch (error) {
+    console.error('Error obteniendo catálogo:', error);
+    return catalogCache.summary || 'Catálogo no disponible temporalmente.';
+  }
+}
+
+// Generar el prompt del sistema con catálogo dinámico
+async function getSystemPrompt() {
+  const catalog = await getUpdatedCatalog();
+  
+  return `Sos Josefina, la asistente de ventas de iGeneration, una tienda argentina de gadgets y electrónicos.
 
 PERSONALIDAD:
 - Sos profesional pero cálida, como una vendedora de confianza
@@ -53,24 +81,19 @@ Envíos:
 
 Garantía: 6 meses por defectos de fábrica
 
-CATÁLOGO ACTUAL:
-- M25 (Auriculares TWS): $12.000 - En stock
-- Noga BTwins (Auriculares TWS): $8.500 - En stock
-- Lenovo XT62 (Auriculares TWS): $9.000 - En stock
-- M90 Pro (Auriculares con display LED): $11.000 - En stock
-- Cargador rápido 20W USB-C: $5.000 - En stock
-- Cable USB-C reforzado 1m: $2.500 - En stock
-- Power Bank 10000mAh: $12.000 - En stock
+CATÁLOGO ACTUAL (precios y stock en tiempo real):
+${catalog}
 
 REGLAS:
-1. Si preguntan por algo que NO tenés, decí que no lo tenés y ofrecé algo similar si hay.
+1. Si preguntan por algo que NO está en el catálogo, decí que no lo tenés y ofrecé algo similar si hay.
 2. Si quieren comprar, pediles que confirmen producto y forma de pago.
 3. Si es un reclamo o problema con compra de ML, derivá a humano: "Dale, te paso con alguien del equipo para resolver eso 👨‍💼"
 4. Si la consulta es muy técnica o piden hablar con alguien, derivá: "Dale, te paso con alguien del equipo que te puede ayudar mejor 👨‍💼"
-5. NO inventes productos ni precios.
+5. NO inventes productos ni precios. Solo mencioná los que están en el catálogo.
 6. Si no sabés algo, derivá a humano.
 7. NUNCA respondas con más de 3 oraciones.
 8. NUNCA uses signos de apertura (¿ ¡).`;
+}
 
 // Historial de conversaciones (en memoria)
 const conversationHistory = new Map();
@@ -101,12 +124,13 @@ async function generateResponse(userId, userMessage) {
     addToHistory(userId, 'user', userMessage);
     
     const history = getHistory(userId);
+    const systemPrompt = await getSystemPrompt();
     
     // Construir el contenido para Gemini
     const contents = [
       {
         role: 'user',
-        parts: [{ text: SYSTEM_PROMPT }]
+        parts: [{ text: systemPrompt }]
       },
       {
         role: 'model',
