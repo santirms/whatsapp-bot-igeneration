@@ -1,7 +1,7 @@
 const axios = require('axios');
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-001:generateContent?key=${GEMINI_API_KEY}`;
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
 // Prompt del sistema con la personalidad y datos de la tienda
 const SYSTEM_PROMPT = `Sos el asistente virtual de iGeneration, una tienda argentina de gadgets y electrónicos.
@@ -15,13 +15,13 @@ PERSONALIDAD:
 INFORMACIÓN DE LA TIENDA:
 
 📍 Ubicación: Lomas de Zamora, Buenos Aires
-🕐 Horarios: Lunes a Viernes 9-18hs, Sábados 10-14hs
+🕐 Horarios: Lunes a Viernes 10-20hs, Sábados 10-14hs
 
 💳 Métodos de pago:
-- Transferencia bancaria (10% OFF)
+- Transferencia bancaria (20% OFF)
 - MercadoPago
-- Efectivo (solo retiro)
-- Tarjetas vía MercadoPago
+- Efectivo (solo contrareembolso)
+- Tarjetas vía PagoNube o Mercadopago
 
 📦 Envíos:
 - CABA/GBA: 24-48hs
