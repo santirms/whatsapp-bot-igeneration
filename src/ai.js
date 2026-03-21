@@ -97,10 +97,14 @@ async function generateResponse(userId, userMessage) {
     const response = await axios.post(GEMINI_URL, {
       contents,
       generationConfig: {
-        temperature: 0.7,
-        topK: 40,
-        topP: 0.95,
-        maxOutputTokens: 300,
+       temperature: 0.7,
+       topK: 40,
+       topP: 0.95,
+       maxOutputTokens: 1024,
+       candidateCount: 1,
+      },
+      thinkingConfig: {
+       thinkingBudget: 0
       },
       safetySettings: [
         { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
