@@ -7,7 +7,7 @@ const TIENDANUBE_API_URL = `https://api.tiendanube.com/v1/${TIENDANUBE_STORE_ID}
 // Headers para las requests
 const headers = {
   'Authentication': `bearer ${TIENDANUBE_ACCESS_TOKEN}`,
-  'User-Agent': 'iGeneration WhatsApp Bot (santiagopetrei@gmail.com)',
+  'User-Agent': 'iGeneration WhatsApp Bot (contacto@igeneration.com.ar)',
   'Content-Type': 'application/json'
 };
 
@@ -39,19 +39,29 @@ async function getProducts(forceRefresh = false) {
     });
 
     // Procesar productos
-    const products = response.data.map(product => ({
-      id: product.id,
-      name: getSpanishText(product.name),
-      description: getSpanishText(product.description),
-      price: product.variants[0]?.price || null,
-      compareAtPrice: product.variants[0]?.compare_at_price || null,
-      stock: product.variants[0]?.stock || 0,
-      sku: product.variants[0]?.sku || null,
-      available: product.variants[0]?.stock > 0,
-      url: product.canonical_url,
-      image: product.images[0]?.src || null,
-      categories: product.categories?.map(c => getSpanishText(c.name)) || []
-    }));
+    const products = response.data.map(product => {
+      const variant = product.variants[0];
+      
+      // Usar promotional_price si existe, sino price
+      const finalPrice = variant?.promotional_price || variant?.price || null;
+      const originalPrice = variant?.price || null;
+      const hasDiscount = variant?.promotional_price && parseFloat(variant.promotional_price) < parseFloat(variant.price);
+      
+      return {
+        id: product.id,
+        name: getSpanishText(product.name),
+        description: getSpanishText(product.description),
+        price: finalPrice,
+        originalPrice: originalPrice,
+        hasDiscount: hasDiscount,
+        stock: variant?.stock || 0,
+        sku: variant?.sku || null,
+        available: product.has_stock !== false && (variant?.stock > 0 || variant?.stock === null),
+        url: product.canonical_url,
+        image: product.images[0]?.src || null,
+        categories: product.categories?.map(c => getSpanishText(c.name)) || []
+      };
+    });
 
     // Actualizar cache
     productCache = {
@@ -69,41 +79,60 @@ async function getProducts(forceRefresh = false) {
   }
 }
 
-// Buscar productos por texto
+// Buscar productos por texto (más flexible)
 async function searchProducts(query) {
   const products = await getProducts();
-  const queryLower = query.toLowerCase();
+  const queryLower = query.toLowerCase().trim();
+  const queryWords = queryLower.split(/\s+/);
   
   // Buscar en nombre, descripción y categorías
   const results = products.filter(product => {
-    const nameMatch = product.name?.toLowerCase().includes(queryLower);
-    const descMatch = product.description?.toLowerCase().includes(queryLower);
-    const catMatch = product.categories?.some(c => c.toLowerCase().includes(queryLower));
-    return nameMatch || descMatch || catMatch;
+    const nameLower = product.name?.toLowerCase() || '';
+    const descLower = product.description?.toLowerCase() || '';
+    const catsLower = product.categories?.join(' ').toLowerCase() || '';
+    const allText = `${nameLower} ${descLower} ${catsLower}`;
+    
+    // Coincidencia si todas las palabras de la query están en el producto
+    return queryWords.every(word => allText.includes(word));
   });
 
   return results;
 }
 
-// Obtener producto por nombre exacto o similar
+// Obtener producto por nombre exacto o similar (búsqueda flexible)
 async function findProduct(productName) {
   const products = await getProducts();
-  const nameLower = productName.toLowerCase();
+  const nameLower = productName.toLowerCase().trim();
   
-  // Primero buscar coincidencia exacta
+  // 1. Buscar coincidencia exacta
   let product = products.find(p => p.name?.toLowerCase() === nameLower);
+  if (product) return product;
   
-  // Si no hay exacta, buscar parcial
-  if (!product) {
-    product = products.find(p => p.name?.toLowerCase().includes(nameLower));
+  // 2. Buscar si el nombre del producto contiene la query
+  product = products.find(p => p.name?.toLowerCase().includes(nameLower));
+  if (product) return product;
+  
+  // 3. Buscar si la query contiene el nombre del producto
+  product = products.find(p => nameLower.includes(p.name?.toLowerCase()));
+  if (product) return product;
+  
+  // 4. Buscar por palabras clave (todas deben coincidir)
+  const keywords = nameLower.split(/\s+/).filter(w => w.length > 2);
+  if (keywords.length > 0) {
+    product = products.find(p => {
+      const pName = p.name?.toLowerCase() || '';
+      return keywords.every(kw => pName.includes(kw));
+    });
+    if (product) return product;
   }
   
-  // Si todavía no hay, buscar palabras clave
-  if (!product) {
-    const keywords = nameLower.split(' ');
-    product = products.find(p => 
-      keywords.some(kw => p.name?.toLowerCase().includes(kw))
-    );
+  // 5. Buscar por al menos una palabra clave importante
+  const importantKeywords = keywords.filter(w => w.length > 3);
+  if (importantKeywords.length > 0) {
+    product = products.find(p => {
+      const pName = p.name?.toLowerCase() || '';
+      return importantKeywords.some(kw => pName.includes(kw));
+    });
   }
 
   return product;
@@ -112,10 +141,11 @@ async function findProduct(productName) {
 // Formatear precio argentino
 function formatPrice(price) {
   if (!price) return 'Consultar';
-  return `$${parseFloat(price).toLocaleString('es-AR', { minimumFractionDigits: 0 })}`;
+  const num = parseFloat(price);
+  return `$${num.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 }
 
-// Generar resumen del catálogo para el prompt de IA (con URLs)
+// Generar resumen del catálogo para el prompt de IA (con URLs y precios correctos)
 async function getCatalogSummary() {
   const products = await getProducts();
   
@@ -126,9 +156,10 @@ async function getCatalogSummary() {
   const summary = products
     .filter(p => p.available)
     .map(p => {
-      const stockStatus = p.stock > 0 ? 'En stock' : 'Sin stock';
-      const url = p.url ? ` | Link: ${p.url}` : '';
-      return `- ${p.name}: ${formatPrice(p.price)} (${stockStatus})${url}`;
+      const priceText = formatPrice(p.price);
+      const discountText = p.hasDiscount ? ` (antes ${formatPrice(p.originalPrice)})` : '';
+      const url = p.url || '';
+      return `- ${p.name}: ${priceText}${discountText} | Link: ${url}`;
     })
     .join('\n');
 
