@@ -27,33 +27,34 @@ async function notifyHandoff(customerPhone, customerName, conversationHistory, r
     const summary = recentMessages
       .map(msg => {
         const role = msg.role === 'user' ? '👤 Cliente' : '🤖 Josefina';
-        const content = msg.content.length > 150 
-          ? msg.content.substring(0, 150) + '...' 
-          : msg.content;
+        let content = msg.content || '';
+        // Truncar si es muy largo
+        if (content.length > 150) {
+          content = content.substring(0, 150) + '...';
+        }
+        // Escapar caracteres especiales de Markdown
+        content = escapeMarkdown(content);
         return `${role}: ${content}`;
       })
       .join('\n\n');
 
-    // Mensaje para Telegram
-    const message = `
-🔔 *DERIVACIÓN A HUMANO*
+    // Mensaje para Telegram (sin Markdown para evitar errores)
+    const message = `🔔 DERIVACIÓN A HUMANO
 
-📱 *Cliente:* ${customerName || 'Sin nombre'}
-📞 *WhatsApp:* ${waLink}
+📱 Cliente: ${customerName || 'Sin nombre'}
+📞 WhatsApp: ${waLink}
 
-📋 *Motivo:* ${reason}
+📋 Motivo: ${reason}
 
-💬 *Resumen de conversación:*
+💬 Resumen de conversación:
 ${summary || 'Sin historial disponible'}
 
-⏰ ${new Date().toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}
-`.trim();
+⏰ ${new Date().toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}`;
 
-    // Enviar a Telegram
+    // Enviar a Telegram SIN parse_mode para evitar errores
     await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
       chat_id: TELEGRAM_CHAT_ID,
       text: message,
-      parse_mode: 'Markdown',
       disable_web_page_preview: false
     });
 
@@ -64,6 +65,19 @@ ${summary || 'Sin historial disponible'}
     console.error('❌ Error enviando notificación Telegram:', error.response?.data || error.message);
     return false;
   }
+}
+
+/**
+ * Escapa caracteres especiales de Markdown
+ */
+function escapeMarkdown(text) {
+  if (!text) return '';
+  return text
+    .replace(/\*/g, '')
+    .replace(/_/g, '')
+    .replace(/\[/g, '(')
+    .replace(/\]/g, ')')
+    .replace(/`/g, "'");
 }
 
 /**
