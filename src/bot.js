@@ -1,5 +1,6 @@
 const { sendMessage, markAsRead } = require('./whatsapp');
-const { generateResponse, shouldHandoff } = require('./ai');
+const { generateResponse, shouldHandoff, getHistory } = require('./ai');
+const { notifyHandoff } = require('./notifications');
 
 // Verificación del webhook
 function handleWebhookVerification(req, res) {
@@ -29,6 +30,9 @@ async function handleIncomingMessage(body) {
     const from = message.from;
     const messageId = message.id;
     const messageType = message.type;
+    
+    // Obtener nombre del contacto si está disponible
+    const contactName = value.contacts?.[0]?.profile?.name || null;
 
     // Marcar como leído
     await markAsRead(messageId);
@@ -48,7 +52,7 @@ async function handleIncomingMessage(body) {
 
     if (!messageBody) return;
 
-    console.log(`📩 Mensaje de ${from}: ${messageBody}`);
+    console.log(`📩 Mensaje de ${from}${contactName ? ` (${contactName})` : ''}: ${messageBody}`);
 
     // Generar respuesta con IA
     const aiResponse = await generateResponse(from, messageBody);
@@ -56,10 +60,26 @@ async function handleIncomingMessage(body) {
     // Enviar respuesta
     await sendMessage(from, aiResponse);
 
-    // Detectar si hubo handoff
+    // Detectar si hubo handoff y notificar por Telegram
     if (shouldHandoff(aiResponse)) {
       console.log(`🚨 DERIVACIÓN A HUMANO - Usuario: ${from}`);
-      // TODO: Acá podés agregar notificación por Telegram/Email
+      
+      // Obtener historial de la conversación
+      const history = getHistory(from);
+      
+      // Determinar razón de la derivación
+      let reason = 'Derivación solicitada';
+      const responseLower = aiResponse.toLowerCase();
+      if (responseLower.includes('reclamo') || responseLower.includes('problema')) {
+        reason = 'Reclamo o problema con pedido';
+      } else if (responseLower.includes('mercadolibre') || responseLower.includes('ml')) {
+        reason = 'Consulta de MercadoLibre';
+      } else if (responseLower.includes('técnic') || responseLower.includes('tecnic')) {
+        reason = 'Consulta técnica';
+      }
+      
+      // Enviar notificación a Telegram
+      await notifyHandoff(from, contactName, history, reason);
     }
 
   } catch (error) {
