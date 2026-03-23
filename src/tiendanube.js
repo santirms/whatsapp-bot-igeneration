@@ -19,7 +19,7 @@ let productCache = {
 
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutos
 
-// Obtener todos los productos
+// Obtener todos los productos (con paginación)
 async function getProducts(forceRefresh = false) {
   try {
     // Usar cache si es válido
@@ -30,16 +30,36 @@ async function getProducts(forceRefresh = false) {
 
     console.log('📦 Actualizando catálogo desde Tienda Nube...');
     
-    const response = await axios.get(`${TIENDANUBE_API_URL}/products`, {
-      headers,
-      params: {
-        per_page: 100,
-        published: true
-      }
-    });
+    let allProducts = [];
+    let page = 1;
+    let hasMore = true;
+    
+    // Traer todas las páginas
+    while (hasMore) {
+      const response = await axios.get(`${TIENDANUBE_API_URL}/products`, {
+        headers,
+        params: {
+          per_page: 200,  // Máximo permitido
+          page: page,
+          published: true
+        }
+      });
+      
+      allProducts = allProducts.concat(response.data);
+      
+      // Verificar si hay más páginas
+      const linkHeader = response.headers['link'];
+      hasMore = linkHeader && linkHeader.includes('rel="next"');
+      page++;
+      
+      // Safety limit
+      if (page > 10) break;
+    }
+
+    console.log(`📦 Total productos obtenidos de API: ${allProducts.length}`);
 
     // Procesar productos
-    const products = response.data.map(product => {
+    const products = allProducts.map(product => {
       const variant = product.variants[0];
       
       // Usar promotional_price si existe, sino price

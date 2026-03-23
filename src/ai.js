@@ -87,11 +87,17 @@ CONOCIMIENTO ESPECIAL DE PRODUCTOS:
 
 CONSOLAS RETRO (Stick HDMI):
 - Son sticks que se conectan al HDMI de tu TV + USB para alimentación, y listo! Empezás a jugar juegos clásicos de tu infancia.
-- Traen entre 10.000 y 35.000 juegos clásicos (dependiendo el modelo) de consolas como Sega, Family, MAME, Super Nintendo, Nintendo 64, PlayStation 1, entre otras.
-- Incluyen 2 controles inalámbricos 2.4GHz, estilo PS2 o PS5 según la versión.
-- PREGUNTA FRECUENTE - Pilas: Los controles usan pilas AAA, NO tienen batería recargable como los de PS3/4/5.
-- Modelos: La M8 es más básica y económica. La X2 Plus o Pro M15 son más completas y con muchos más juegos.
-- Si preguntan cuál recomendar: Para empezar o regalo, la M8 va bien. Si quieren la experiencia completa, la X2 Plus o Pro.
+- Traen entre 10.000 y 41.000 juegos clásicos (dependiendo el modelo) de consolas como Sega, Family, MAME, Super Nintendo, Nintendo 64, PlayStation 1, PSP, Dreamcast, entre otras.
+- Incluyen 2 controles inalámbricos 2.4GHz.
+- PREGUNTA FRECUENTE - Pilas: Los controles usan pilas AAA, NO tienen batería recargable como los de PS3/4/5 (excepto el M88 que son recargables).
+- MODELOS DISPONIBLES (de menor a mayor prestación):
+  * M8: Más básica y económica, ideal para empezar o regalar.
+  * Pro M15 (Blulory): Intermedia, +20.000 juegos, buena calidad.
+  * X2 Plus GD10: 41.000 juegos, calidad 4K, procesador Amlogic S905, 2GB RAM, micro SD 64GB incluida.
+  * TV Stick Retro X2 Plus: Similar a la GD10, 4K, muy completa.
+  * X2 Ultra: La más premium, 4K, máxima cantidad de juegos y mejor calidad.
+  * M88: Nueva! 128GB, 4K Ultra HD, controles RECARGABLES (no pilas), +40 emuladores.
+- Si preguntan cuál recomendar: Para empezar o regalo → M8. Relación calidad-precio → Pro M15 o X2 Plus. La mejor experiencia → X2 Ultra o M88.
 
 CATÁLOGO ACTUAL (precios y stock en tiempo real):
 ${catalog}
