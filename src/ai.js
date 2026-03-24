@@ -1,5 +1,6 @@
 const axios = require('axios');
 const { getCatalogSummary } = require('./tiendanube');
+const { findOrderByNumber, findOrdersByWhatsApp, getOrderSummary } = require('./orders');
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
@@ -68,10 +69,13 @@ CONTEXTO IMPORTANTE - MERCADOLIBRE:
 - Si quieren comprar, siempre intentá que compren por la web o WhatsApp (mejor margen): "Te conviene comprarlo directo por acá, te hacemos mejor precio que en ML"
 
 CONSULTAS SOBRE PEDIDOS/ÓRDENES:
-- NO tenés acceso a ver el estado de las órdenes directamente.
-- Si preguntan por un pedido (con número de orden o sin él), explicá que no podés ver el seguimiento desde acá y ofrecé ayuda:
-  "No tengo acceso al sistema de envíos desde acá, pero si me decís tu número de orden o mail, te paso con alguien del equipo que te ayuda en un toque"
-- Si dicen que no les llegó el mail con seguimiento, sugerí revisar spam y si sigue sin aparecer, derivá a humano.
+- TENÉS acceso a ver órdenes de la tienda web (Tienda Nube).
+- Si el cliente pregunta por su pedido y te llega información de la orden, usala para responder.
+- Si el cliente da un número de orden, vas a recibir los datos automáticamente.
+- Si no da número, se busca por su número de WhatsApp.
+- Para compras de MERCADOLIBRE no tenés acceso, derivá a humano.
+- Si el tracking es un link (empieza con http), pasaselo al cliente para que siga su envío.
+- Si no encontrás la orden, pedile el número de orden o el email con el que compró.
 
 INFORMACIÓN DE LA TIENDA:
 
@@ -154,16 +158,79 @@ function isFirstMessage(userId) {
   return history.length === 0;
 }
 
+// Detectar si el mensaje pregunta por una orden y obtener info
+async function detectAndFetchOrder(message, userId) {
+  const msgLower = message.toLowerCase();
+  
+  // Palabras clave que indican consulta de orden
+  const orderKeywords = ['orden', 'pedido', 'compra', 'envio', 'envío', 'llegó', 'llego', 'tracking', 'seguimiento', 'cuando llega', 'donde está', 'donde esta', 'estado de mi'];
+  
+  const hasOrderKeyword = orderKeywords.some(kw => msgLower.includes(kw));
+  
+  if (!hasOrderKeyword) {
+    return null;
+  }
+  
+  // Buscar número de orden en el mensaje (#1234, 1234, orden 1234, etc)
+  const orderNumberMatch = message.match(/#?(\d{6,12})/);
+  
+  if (orderNumberMatch) {
+    // Buscar por número de orden específico
+    const orderNumber = orderNumberMatch[1];
+    console.log(`🔍 Detectada consulta de orden #${orderNumber}`);
+    
+    const order = await findOrderByNumber(orderNumber);
+    if (order) {
+      return getOrderSummary(order);
+    } else {
+      return `No encontré la orden #${orderNumber}. Verificá el número o puede ser una compra de MercadoLibre (esas no las veo desde acá).`;
+    }
+  }
+  
+  // Si no hay número, buscar órdenes del usuario por su WhatsApp
+  console.log(`🔍 Buscando órdenes para WhatsApp ${userId}...`);
+  const orders = await findOrdersByWhatsApp(userId);
+  
+  if (orders.length === 0) {
+    return 'No encontré órdenes asociadas a este número de WhatsApp. Si compraste con otro número o por MercadoLibre, pasame el número de orden o email.';
+  }
+  
+  if (orders.length === 1) {
+    return getOrderSummary(orders[0]);
+  }
+  
+  // Múltiples órdenes: mostrar las últimas 3
+  const recentOrders = orders.slice(0, 3);
+  let summary = `Encontré ${orders.length} órdenes a tu nombre. Las más recientes:\n\n`;
+  
+  recentOrders.forEach(order => {
+    summary += `• #${order.id} (${order.date}) - ${order.paymentStatus} - ${order.shippingStatus}\n`;
+  });
+  
+  summary += '\nDecime el número de orden para darte más detalles.';
+  
+  return summary;
+}
+
 // Generar respuesta con Gemini
 async function generateResponse(userId, userMessage) {
   try {
     const isFirst = isFirstMessage(userId);
     
+    // Detectar si pregunta por una orden específica
+    const orderInfo = await detectAndFetchOrder(userMessage, userId);
+    
     // Agregar mensaje del usuario al historial
     addToHistory(userId, 'user', userMessage);
     
     const history = getHistory(userId);
-    const systemPrompt = await getSystemPrompt();
+    let systemPrompt = await getSystemPrompt();
+    
+    // Si encontramos info de orden, agregarla al contexto
+    if (orderInfo) {
+      systemPrompt += `\n\nINFORMACIÓN DE ORDEN ENCONTRADA (usá estos datos para responder):
+${orderInfo}`;
+    }
     
     // Construir el contenido para Gemini
     const contents = [
