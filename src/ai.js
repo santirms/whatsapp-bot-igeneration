@@ -171,8 +171,9 @@ async function detectAndFetchOrder(message, userId) {
     return null;
   }
   
-  // Buscar número de orden en el mensaje (#1234, 1234, orden 1234, etc)
-  const orderNumberMatch = message.match(/#?(\d{6,12})/);
+  // Buscar número de orden en el mensaje (#5554, 5554, orden 5554, etc)
+  // Números de 4-12 dígitos
+  const orderNumberMatch = message.match(/#?(\d{4,12})\b/);
   
   if (orderNumberMatch) {
     // Buscar por número de orden específico

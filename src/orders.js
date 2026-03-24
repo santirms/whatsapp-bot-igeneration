@@ -11,7 +11,7 @@ const headers = {
 };
 
 /**
- * Buscar orden por número de orden
+ * Buscar orden por número de orden (el que ve el cliente, ej: 5554)
  * @param {string|number} orderNumber - Número de orden (puede venir con # o sin)
  */
 async function findOrderByNumber(orderNumber) {
@@ -25,18 +25,33 @@ async function findOrderByNumber(orderNumber) {
 
     console.log(`🔍 Buscando orden #${cleanNumber}...`);
 
-    // Buscar por ID directamente
-    const response = await axios.get(`${TIENDANUBE_API_URL}/orders/${cleanNumber}`, {
-      headers
+    // Buscar usando el parámetro q= que busca por number
+    const response = await axios.get(`${TIENDANUBE_API_URL}/orders`, {
+      headers,
+      params: {
+        q: cleanNumber
+      }
     });
 
-    return parseOrder(response.data);
-
-  } catch (error) {
-    if (error.response?.status === 404) {
-      console.log(`❌ Orden #${orderNumber} no encontrada`);
+    // La API devuelve un array, tomamos la primera coincidencia exacta
+    const orders = response.data;
+    
+    if (!orders || orders.length === 0) {
+      console.log(`❌ Orden #${cleanNumber} no encontrada`);
       return null;
     }
+
+    // Buscar coincidencia exacta por number
+    const exactMatch = orders.find(o => String(o.number) === cleanNumber);
+    
+    if (exactMatch) {
+      return parseOrder(exactMatch);
+    }
+
+    // Si no hay exacta, devolver la primera
+    return parseOrder(orders[0]);
+
+  } catch (error) {
     console.error('Error buscando orden:', error.response?.data || error.message);
     return null;
   }
@@ -132,21 +147,27 @@ function parseOrder(order) {
     'abandoned': 'Abandonado'
   };
 
-  // Mapear estados de fulfillment
-  const fulfillmentStatusMap = {
-    'fulfilled': 'Enviado',
-    'unfulfilled': 'Pendiente de envío',
-    'partial': 'Envío parcial',
-    'shipped': 'En camino',
+  // Mapear estados de envío
+  const shippingStatusMap = {
+    'shipped': 'Enviado',
+    'unshipped': 'Pendiente de envío',
+    'partially_shipped': 'Envío parcial',
     'delivered': 'Entregado'
   };
 
-  // Determinar estado del envío
-  let shippingStatus = 'Pendiente de envío';
-  if (order.fulfillment_status) {
-    shippingStatus = fulfillmentStatusMap[order.fulfillment_status] || order.fulfillment_status;
-  } else if (order.shipping_tracking_number) {
-    shippingStatus = 'Enviado';
+  // Mapear estado general de la orden
+  const orderStatusMap = {
+    'open': 'Abierta',
+    'closed': 'Cerrada',
+    'cancelled': 'Cancelada'
+  };
+
+  // Estado del envío
+  let shippingStatus = shippingStatusMap[order.shipping_status] || order.shipping_status || 'Pendiente';
+  
+  // Si está cancelada, mostrar eso
+  if (order.status === 'cancelled') {
+    shippingStatus = 'Orden cancelada';
   }
 
   // Formatear fecha
@@ -164,32 +185,54 @@ function parseOrder(order) {
     price: p.price
   })) || [];
 
+  // Obtener tracking - puede estar en shipping_tracking_number o en fulfillments
+  let trackingUrl = order.shipping_tracking_url || order.shipping_tracking_number || null;
+  
+  // Buscar en fulfillments si no está en el campo principal
+  if (!trackingUrl && order.fulfillments?.length > 0) {
+    const fulfillment = order.fulfillments[0];
+    if (fulfillment.tracking_info?.url) {
+      trackingUrl = fulfillment.tracking_info.url;
+    } else if (fulfillment.tracking_info?.code) {
+      trackingUrl = fulfillment.tracking_info.code;
+    }
+  }
+
+  // Dirección de envío
+  const shippingAddress = order.shipping_address || {};
+
   return {
     id: order.id,
-    number: order.number || order.id,
+    number: order.number,  // Este es el número que ve el cliente (#5554)
     date: formattedDate,
     customerName: order.contact_name,
     customerEmail: order.contact_email,
     customerPhone: order.contact_phone,
     
     // Estado
+    status: orderStatusMap[order.status] || order.status,
     paymentStatus: paymentStatusMap[order.payment_status] || order.payment_status,
     paymentStatusRaw: order.payment_status,
     shippingStatus: shippingStatus,
+    shippingStatusRaw: order.shipping_status,
     
     // Envío
     shippingMethod: order.shipping_option || 'No especificado',
     trackingNumber: order.shipping_tracking_number || null,
-    trackingUrl: order.shipping_tracking_url || order.shipping_tracking_number || null,
-    shippingCity: order.shipping_address?.city || order.billing_city,
-    shippingProvince: order.shipping_address?.province || order.billing_province,
+    trackingUrl: trackingUrl,
+    shippingCity: shippingAddress.city || order.billing_city,
+    shippingProvince: shippingAddress.province || order.billing_province,
     
     // Montos
     total: formatPrice(order.total),
     
     // Productos
     products: products,
-    productsSummary: products.map(p => `${p.quantity}x ${p.name}`).join(', ') || 'Ver detalle en web'
+    productsSummary: products.map(p => `${p.quantity}x ${p.name}`).join(', ') || 'Ver detalle en web',
+    
+    // Info adicional
+    cancelReason: order.cancel_reason || null,
+    cancelledAt: order.cancelled_at || null
   };
 }
 
@@ -208,23 +251,33 @@ function formatPrice(price) {
 function getOrderSummary(order) {
   if (!order) return null;
 
-  let summary = `Orden #${order.id} del ${order.date}\n`;
+  let summary = `Orden #${order.number} del ${order.date}\n`;
+  summary += `Producto: ${order.productsSummary}\n`;
+  summary += `Total: ${order.total}\n`;
   summary += `Estado del pago: ${order.paymentStatus}\n`;
-  summary += `Estado del envío: ${order.shippingStatus}\n`;
   
-  if (order.trackingNumber) {
-    // Si es URL de tracking
-    if (order.trackingNumber.startsWith('http')) {
-      summary += `Seguimiento: ${order.trackingNumber}\n`;
-    } else {
+  // Si está cancelada, mostrar eso claramente
+  if (order.status === 'Cancelada') {
+    summary += `Estado: CANCELADA`;
+    if (order.paymentStatusRaw === 'refunded') {
+      summary += ` (Reembolsado)`;
+    }
+    summary += `\n`;
+  } else {
+    summary += `Estado del envío: ${order.shippingStatus}\n`;
+    
+    if (order.trackingUrl && order.trackingUrl.startsWith('http')) {
+      summary += `Link de seguimiento: ${order.trackingUrl}\n`;
+    } else if (order.trackingNumber) {
       summary += `Código de seguimiento: ${order.trackingNumber}\n`;
     }
   }
   
-  summary += `Destino: ${order.shippingCity || ''}, ${order.shippingProvince || ''}\n`;
-  summary += `Total: ${order.total}`;
+  if (order.shippingCity || order.shippingProvince) {
+    summary += `Destino: ${order.shippingCity || ''}, ${order.shippingProvince || ''}`;
+  }
 
-  return summary;
+  return summary.trim();
 }
 
 module.exports = {
