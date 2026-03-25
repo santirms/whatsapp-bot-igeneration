@@ -1,4 +1,4 @@
-const { sendMessage, markAsRead } = require('./whatsapp');
+const { sendMessage, markAsRead, showTyping } = require('./whatsapp');
 const { generateResponse, shouldHandoff, getHistory } = require('./ai');
 const { notifyHandoff } = require('./notifications');
 
@@ -53,6 +53,9 @@ async function handleIncomingMessage(body) {
     if (!messageBody) return;
 
     console.log(`📩 Mensaje de ${from}${contactName ? ` (${contactName})` : ''}: ${messageBody}`);
+
+    // Mostrar "escribiendo..." mientras genera la respuesta
+    await showTyping(from);
 
     // Generar respuesta con IA
     const aiResponse = await generateResponse(from, messageBody);

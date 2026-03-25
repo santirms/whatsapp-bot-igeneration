@@ -268,7 +268,7 @@ ${orderInfo}`;
         temperature: 0.8,
         topK: 40,
         topP: 0.95,
-        maxOutputTokens: 500,
+        maxOutputTokens: 800,
         candidateCount: 1,
       },
       safetySettings: [
